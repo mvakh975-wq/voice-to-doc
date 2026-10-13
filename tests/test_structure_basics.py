@@ -91,3 +91,8 @@ def test_is_too_short():
     assert is_too_short(block, short)
     assert not is_too_short(block, ok)
     assert not is_too_short([seg(0, "Э-э, ну.")], {"utterances": [{"speaker": None, "start": 0.0, "text": "Ну."}]})
+
+
+@pytest.mark.parametrize("value,expected", [("[05:30]", 330.0), (" [1:02:05] ", 3725.0)])
+def test_parse_ts_accepts_bracketed_timestamps(value, expected):
+    assert parse_ts(value) == expected

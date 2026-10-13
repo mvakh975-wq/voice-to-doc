@@ -13,6 +13,7 @@ from pathlib import Path
 
 from voice_to_doc.audio import AudioError, prepare_audio
 from voice_to_doc.config import load_settings
+from voice_to_doc.fsutil import write_text_atomic
 from voice_to_doc.groq_client import AuthError, DailyLimitExceeded, GroqError, Unavailable, make_client
 from voice_to_doc.ratelimit import RateLimiter
 from voice_to_doc.render import to_docx, to_markdown
@@ -82,10 +83,7 @@ class JobStore:
         return queued
 
     def _write(self, job: dict) -> None:
-        path = self.dir(job["id"]) / "job.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        write_text_atomic(self.dir(job["id"]) / "job.json", json.dumps(job, ensure_ascii=False))
 
 
 class Pipeline:
@@ -177,11 +175,12 @@ class Pipeline:
         else:
             self._step(job_id, "summary")
             doc = make_document(structured, llm(), Path(job["filename"]).stem, settings.block_tokens)
-            (d / "document.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+            write_text_atomic(d / "document.json", json.dumps(doc, ensure_ascii=False))
 
         self._step(job_id, "render")
-        (d / "result.md").write_text(to_markdown(doc), encoding="utf-8")
-        to_docx(doc, d / "result.docx")
+        write_text_atomic(d / "result.md", to_markdown(doc))
+        to_docx(doc, d / "result.docx.tmp")
+        (d / "result.docx.tmp").replace(d / "result.docx")
 
 
 class Worker:

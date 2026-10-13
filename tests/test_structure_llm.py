@@ -118,3 +118,22 @@ def test_make_document_uses_summary_and_falls_back(clock):
     assert doc["title"] == "Тестовая запись" and doc["summary"] == ["Первый тезис", "Второй тезис"]
     bad = make_document(structured, make_llm(Scripted({"title": 5}), clock), "файл", 2500)
     assert bad["title"] == "файл" and bad["warnings"] == ["Не удалось составить выжимку."]
+
+
+class Recording(Scripted):
+    def chat_json(self, system, user, max_tokens):
+        self.max_tokens = max_tokens
+        return super().chat_json(system, user, max_tokens)
+
+
+def test_output_budget_scales_with_block_size(clock):
+    client = Recording(GOOD)
+    structure_block(BLOCK, "lecture", "", make_llm(client, clock), long=False)
+    assert client.max_tokens < 1000  # tiny block must not reserve the full 4000
+
+
+def test_output_budget_is_capped(clock):
+    huge = [{"start": 0.0, "end": 1.0, "text": "слово " * 3000}]
+    client = Recording({"utterances": [{"speaker": "Собеседник", "start": "00:00", "text": "слово " * 3000}]})
+    structure_block(huge, "interview", "", make_llm(client, clock), long=False)
+    assert client.max_tokens == 4000

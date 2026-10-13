@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+from voice_to_doc.fsutil import write_text_atomic
 from voice_to_doc.ratelimit import call_with_retries
 
 # Whisper "hears" phrases in silence/music; such segments carry a high no_speech_prob.
@@ -35,9 +36,9 @@ def transcribe_chunks(job_dir: Path, client, limiter, language: str, *,
                 return client.transcribe(audio, language)
 
             raw = call_with_retries(call, sleep=sleep, log=log)
-            part.write_text(json.dumps(shift_segments(raw, chunk["start"]), ensure_ascii=False), encoding="utf-8")
+            write_text_atomic(part, json.dumps(shift_segments(raw, chunk["start"]), ensure_ascii=False))
             log(f"Распознан кусок {i + 1}/{len(chunks)}")
         segments.extend(json.loads(part.read_text(encoding="utf-8")))
         on_progress(i + 1, len(chunks))
-    (job_dir / "transcript.json").write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(job_dir / "transcript.json", json.dumps(segments, ensure_ascii=False))
     return segments

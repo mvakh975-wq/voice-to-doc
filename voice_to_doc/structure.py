@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from voice_to_doc.fsutil import write_text_atomic
 from voice_to_doc.groq_client import InvalidJSON
 from voice_to_doc.ratelimit import RateLimiter, call_with_retries
 
@@ -21,7 +22,7 @@ def fmt_ts(seconds: float, long: bool = False) -> str:
 def parse_ts(value) -> float | None:
     if not isinstance(value, str):
         return None
-    parts = value.strip().split(":")
+    parts = value.strip().strip("[]").strip().split(":")
     if not 2 <= len(parts) <= 3 or not all(p.isdigit() for p in parts):
         return None
     total = 0
@@ -141,6 +142,9 @@ SYSTEM_SUMMARY = """# task: summary
 Ответь только JSON:
 {"title": str, "summary": [str]}"""
 
+OUTPUT_OVERHEAD_TOKENS = 600
+SUMMARY_MAX_TOKENS = 1200
+
 STRICT_NOTE = (
     "\n\nВАЖНО: прошлый ответ был неполным или неверным. Верни ВЕСЬ текст фрагмента в указанном JSON, "
     "удалив только слова-паразиты и повторы."
@@ -156,12 +160,14 @@ class LLM:
     sleep: Callable = time.sleep
     log: Callable = field(default=lambda message: None)
 
-    def ask(self, system: str, user: str):
-        estimate = estimate_tokens(system + user, self.chars_per_token) + self.max_output_tokens
+    def ask(self, system: str, user: str, max_tokens: int | None = None):
+        # Groq counts max_completion_tokens toward TPM, so reserve only what the answer can need.
+        max_tokens = min(max_tokens or self.max_output_tokens, self.max_output_tokens)
+        estimate = estimate_tokens(system + user, self.chars_per_token) + max_tokens
 
         def call():
             self.limiter.acquire(estimate)
-            return self.client.chat_json(system, user, self.max_output_tokens)
+            return self.client.chat_json(system, user, max_tokens)
 
         try:
             return json.loads(call_with_retries(call, sleep=self.sleep, log=self.log))
@@ -198,8 +204,10 @@ def structure_block(block: list[dict], kind: str, context: str, llm: LLM, long: 
     system = SYSTEM_LECTURE if kind == "lecture" else SYSTEM_INTERVIEW
     validate = validate_lecture if kind == "lecture" else validate_interview
     user = build_user(block, context, long)
+    # The cleaned text is about as long as the input; leave headroom for JSON and brief reasoning.
+    budget = int(estimate_tokens(render_lines(block, long), llm.chars_per_token) * 1.3) + OUTPUT_OVERHEAD_TOKENS
     for attempt in range(2):
-        result = validate(llm.ask(system + (STRICT_NOTE if attempt else ""), user), allowed)
+        result = validate(llm.ask(system + (STRICT_NOTE if attempt else ""), user, budget), allowed)
         if result and not is_too_short(block, result):
             return result
         llm.log(f"Блок с {fmt_ts(block[0]['start'], long)}: ответ не прошёл проверку (попытка {attempt + 1})")
@@ -224,7 +232,7 @@ def _read_json(path: Path):
 
 
 def _write_json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(path, json.dumps(data, ensure_ascii=False))
 
 
 def structure_transcript(job_dir: Path, kind: str, llm: LLM, block_tokens: int, *,
@@ -273,7 +281,8 @@ def make_document(structured: dict, llm: LLM, fallback_title: str, block_tokens:
     if not structured["items"]:
         return doc
     long = structured["duration_s"] >= 3600
-    data = llm.ask(SYSTEM_SUMMARY, summary_input(structured, long, int(block_tokens * llm.chars_per_token)))
+    data = llm.ask(SYSTEM_SUMMARY, summary_input(structured, long, int(block_tokens * llm.chars_per_token)),
+                   SUMMARY_MAX_TOKENS)
     data = data if isinstance(data, dict) else {}
     title, summary = data.get("title"), data.get("summary")
     if isinstance(title, str) and title.strip():

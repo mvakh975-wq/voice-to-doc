@@ -9,6 +9,8 @@ from pathlib import Path
 
 import imageio_ffmpeg
 
+from voice_to_doc.fsutil import write_text_atomic
+
 READ_ERROR = "Не удалось прочитать файл — это точно аудио или видео?"
 
 
@@ -40,5 +42,5 @@ def prepare_audio(src: Path, job_dir: Path, chunk_seconds: int) -> dict:
     if proc.returncode != 0 or not chunks:
         raise AudioError(READ_ERROR, proc.stderr.strip())
     manifest = {"duration_s": chunks[-1]["end"], "chunks": chunks}
-    (job_dir / "chunks.json").write_text(json.dumps(manifest), encoding="utf-8")
+    write_text_atomic(job_dir / "chunks.json", json.dumps(manifest))
     return manifest
