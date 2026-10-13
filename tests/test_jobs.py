@@ -210,3 +210,11 @@ def test_data_dirs_are_private(store):
 def test_unknown_extensions_are_not_kept(store):
     assert store.create("x.m3u8", "lecture")["source"] == "source"
     assert store.create("x.FLAC", "lecture")["source"] == "source.flac"
+
+
+def test_annotations_evaluate_on_older_pythons():
+    """Python < 3.14 evaluates annotations eagerly; `list` inside JobStore is the method, not the builtin."""
+    for name in dir(JobStore):
+        attr = getattr(JobStore, name)
+        if callable(attr) and not name.startswith("__"):
+            attr.__annotations__  # noqa: B018 — raises TypeError if an annotation is broken

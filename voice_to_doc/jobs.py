@@ -1,5 +1,6 @@
 """Jobs: on-disk state, the processing pipeline and a single background worker."""
 
+import builtins
 import json
 import logging
 import queue
@@ -75,7 +76,7 @@ class JobStore:
             self._write(job)
             return job
 
-    def list(self) -> list[dict]:
+    def list(self) -> builtins.list[dict]:
         jobs = [json.loads(p.read_text(encoding="utf-8")) for p in self.data_dir.glob("*/job.json")]
         return sorted(jobs, key=lambda j: (j["created_at"], j["id"]), reverse=True)
 
@@ -86,7 +87,7 @@ class JobStore:
     def delete(self, job_id: str) -> None:
         shutil.rmtree(self.dir(job_id), ignore_errors=True)
 
-    def recover_interrupted(self) -> list[str]:
+    def recover_interrupted(self) -> builtins.list[str]:
         queued = []
         for job in reversed(self.list()):
             if job["status"] == "running":
