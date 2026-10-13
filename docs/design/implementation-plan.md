@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14, FastAPI 0.143, uvicorn 0.54, groq SDK 1.7, python-docx 1.2, imageio-ffmpeg 0.6 (встроенный ffmpeg 7.1 с libopus), python-dotenv, pytest 9, Playwright 1.63; фронтенд — ванильные HTML/CSS/JS + marked 12.0.2 (cdnjs).
 
-**Spec:** `docs/superpowers/specs/2026-10-12-voice-to-doc-design.md`
+**Spec:** `docs/design/spec.md`
 
 ## Global Constraints
 
