@@ -18,7 +18,7 @@ class Settings:
     language: str = "ru"
     chunk_seconds: int = 600
     block_tokens: int = 2500
-    chars_per_token: float = 2.5
+    chars_per_token: float = 3.5  # measured ≈3.8 for Russian on gpt-oss; kept slightly conservative
     max_output_tokens: int = 4000
     llm_tpm: int = 8000
     llm_rpm: int = 30
@@ -51,11 +51,14 @@ _FIELDS = {
 def load_settings(env_path: Path = ENV_PATH) -> Settings:
     raw = {k: v for k, v in dotenv_values(env_path).items() if v is not None}
     raw.update({k: os.environ[k] for k in _FIELDS if k in os.environ})
-    kwargs = {
-        attr: convert(raw[key])
-        for key, (attr, convert) in _FIELDS.items()
-        if raw.get(key, "") != ""
-    }
+    kwargs = {}
+    for key, (attr, convert) in _FIELDS.items():
+        if raw.get(key, "") == "":
+            continue
+        try:
+            kwargs[attr] = convert(raw[key])
+        except ValueError:
+            raise ValueError(f"Неверное значение {key} в .env: {raw[key]!r}") from None
     return Settings(env_path=env_path, **kwargs)
 
 

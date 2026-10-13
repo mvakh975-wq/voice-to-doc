@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -47,6 +47,27 @@ def _is_cross_site(request: Request) -> bool:
     return request.headers.get("sec-fetch-site") in ("cross-site", "same-site")
 
 
+class UploadTooLarge(Exception):
+    pass
+
+
+def save_upload(store: JobStore, filename: str, kind: str, fileobj) -> dict:
+    """Copy an upload into a new job; on any failure no half-written job is left behind."""
+    job = store.create(filename, kind)
+    try:
+        size = 0
+        with open(store.dir(job["id"]) / job["source"], "wb") as out:
+            while chunk := fileobj.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise UploadTooLarge
+                out.write(chunk)
+    except BaseException:
+        store.delete(job["id"])
+        raise
+    return store.update(job["id"], status="queued")
+
+
 class KeyIn(BaseModel):
     groq_api_key: str
 
@@ -72,15 +93,16 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
     async def guard(request: Request, call_next):
         # Host check stops DNS rebinding; the cross-site check stops other web pages
         # in the user's browser from driving this local API (CSRF).
-        if _hostname(request.headers.get("host", "")) not in ALLOWED_HOSTS:
-            return PlainTextResponse("Unknown host", status_code=400)
-        if request.method not in SAFE_METHODS and _is_cross_site(request):
-            return JSONResponse({"detail": "Запрос с чужого сайта отклонён"}, status_code=403)
-        # Starlette spools the whole body to disk before the handler runs: refuse early.
         length = request.headers.get("content-length", "")
-        if length.isdigit() and int(length) > MAX_UPLOAD + UPLOAD_OVERHEAD:
-            return JSONResponse({"detail": "Файл больше 2 ГБ"}, status_code=413)
-        response = await call_next(request)
+        if _hostname(request.headers.get("host", "")) not in ALLOWED_HOSTS:
+            response = PlainTextResponse("Unknown host", status_code=400)
+        elif request.method not in SAFE_METHODS and _is_cross_site(request):
+            response = JSONResponse({"detail": "Запрос с чужого сайта отклонён"}, status_code=403)
+        elif length.isdigit() and int(length) > MAX_UPLOAD + UPLOAD_OVERHEAD:
+            # Starlette spools the whole body to disk before the handler runs: refuse early.
+            response = JSONResponse({"detail": "Файл больше 2 ГБ"}, status_code=413)
+        else:
+            response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)
         return response
 
@@ -116,18 +138,10 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
         # Sync handler: FastAPI runs it in a thread pool, so copying a big file
         # does not block the event loop.
         check_kind(kind)
-        job = store.create(file.filename or "запись", kind)
-        size = 0
-        with open(store.dir(job["id"]) / job["source"], "wb") as out:
-            while chunk := file.file.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD:
-                    break
-                out.write(chunk)
-        if size > MAX_UPLOAD:
-            store.delete(job["id"])
-            raise HTTPException(413, "Файл больше 2 ГБ")
-        store.update(job["id"], status="queued")
+        try:
+            job = save_upload(store, file.filename or "запись", kind, file.file)
+        except UploadTooLarge:
+            raise HTTPException(413, "Файл больше 2 ГБ") from None
         worker.submit(job["id"])
         return {"id": job["id"]}
 
@@ -138,6 +152,17 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str):
         return job_or_404(job_id)
+
+    @app.delete("/api/jobs/{job_id}", status_code=204)
+    def delete_job(job_id: str):
+        job_or_404(job_id)
+        try:
+            deleted = store.delete_if_idle(job_id)
+        except KeyError:
+            raise HTTPException(404, "Запись не найдена") from None
+        if not deleted:
+            raise HTTPException(409, "Запись ещё обрабатывается — удалить можно после остановки")
+        return Response(status_code=204)
 
     @app.post("/api/jobs/{job_id}/resume")
     def resume(job_id: str):

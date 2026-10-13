@@ -58,7 +58,7 @@
 
     <div id="progress">
       <ol id="steps" class="steps"></ol>
-      <div class="bar" role="progressbar" aria-label="Общий прогресс"><div id="bar-fill"></div></div>
+      <div id="bar" class="bar" role="progressbar" aria-label="Общий прогресс" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="bar-fill"></div></div>
     </div>
 
     <div id="job-alert" class="alert" hidden>
@@ -84,6 +84,11 @@
         <button id="re-btn" type="button" class="secondary">Переоформить</button>
       </div>
       <article id="doc" class="doc"></article>
+    </div>
+
+    <div class="danger-zone">
+      <button id="delete-btn" type="button" class="link-danger" hidden>Удалить запись и все её файлы</button>
+      <p id="delete-error" class="error" hidden></p>
     </div>
   </section>
 </main>

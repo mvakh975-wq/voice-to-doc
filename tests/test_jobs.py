@@ -218,3 +218,38 @@ def test_annotations_evaluate_on_older_pythons():
         attr = getattr(JobStore, name)
         if callable(attr) and not name.startswith("__"):
             attr.__annotations__  # noqa: B018 — raises TypeError if an annotation is broken
+
+
+def test_list_skips_broken_or_vanishing_jobs(store):
+    good = store.create("a.mp3", "lecture")
+    broken = store.create("b.mp3", "lecture")
+    (store.dir(broken["id"]) / "job.json").write_text("{not json")
+    (store.data_dir / "20261013-000000-abcdef").mkdir()  # no job.json at all
+    assert [j["id"] for j in store.list()] == [good["id"]]
+
+
+def test_filename_is_cleaned_and_capped(store):
+    job = store.create("a\x00b\nc" + "я" * 500 + ".mp3", "lecture")
+    assert "\x00" not in job["filename"] and "\n" not in job["filename"]
+    assert len(job["filename"]) <= 200 and job["filename"].endswith(".mp3")
+    assert job["source"] == "source.mp3"
+
+
+def test_chunks_removed_after_transcription(store, tmp_path, clock):
+    job = add_job(store, tmp_path)
+    p, _ = pipeline(store, clock)
+    p.run(job["id"])
+    d = store.dir(job["id"])
+    assert not (d / "chunks").exists() and (d / "transcript.json").exists()
+    p.restructure(job["id"], "interview")
+    p.run(job["id"])
+    assert store.get(job["id"])["status"] == "done"
+
+
+def test_delete_refuses_active_jobs(store):
+    job = store.create("a.mp3", "lecture")
+    store.update(job["id"], status="running")
+    assert store.delete_if_idle(job["id"]) is False
+    store.update(job["id"], status="done")
+    assert store.delete_if_idle(job["id"]) is True
+    assert not store.dir(job["id"]).exists()

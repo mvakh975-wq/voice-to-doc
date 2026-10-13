@@ -13,7 +13,7 @@ fi
 
 # Reinstall when dependencies change or a previous install was interrupted.
 stamp=".venv/.installed"
-want=$(cat requirements.txt constraints.txt | shasum | cut -d' ' -f1)
+want=$(python3 -c 'import hashlib, sys; print(hashlib.sha256(b"".join(open(f, "rb").read() for f in sys.argv[1:])).hexdigest())' requirements.txt constraints.txt)
 if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$want" ]; then
   echo "Устанавливаю зависимости…"
   python3 -m venv .venv

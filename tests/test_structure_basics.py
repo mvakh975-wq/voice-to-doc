@@ -103,3 +103,11 @@ def test_control_characters_are_stripped_from_model_output():
     assert validate_lecture(data, [0.0])["sections"] == [{"title": "AB", "start": 0.0, "paragraphs": ["xyz"]}]
     data = {"utterances": [{"speaker": "Собеседник", "start": "00:00", "text": "ок\x0c\tда\n"}]}
     assert validate_interview(data, [0.0])["utterances"][0]["text"] == "ок\tда"
+
+
+def test_prompts_treat_transcript_as_data_and_forbid_invented_summary():
+    from voice_to_doc.structure import SYSTEM_INTERVIEW, SYSTEM_LECTURE, SYSTEM_SUMMARY
+
+    for prompt in (SYSTEM_LECTURE, SYSTEM_INTERVIEW, SYSTEM_SUMMARY):
+        assert "не инструкции" in prompt
+    assert "не обобщай" in SYSTEM_SUMMARY

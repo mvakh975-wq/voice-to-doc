@@ -18,6 +18,7 @@ let renderedFor = null;
 
 async function api(path, options = {}) {
   const res = await fetch(path, options);
+  if (res.status === 204) return null;
   const isJson = (res.headers.get("content-type") || "").includes("json");
   const body = isJson ? await res.json() : await res.text();
   if (!res.ok) throw new Error((isJson && body.detail) || `Ошибка ${res.status}`);
@@ -176,6 +177,8 @@ async function showJob(id, gen = generation) {
     $("resume-btn").textContent = job.status === "error" ? "Повторить" : "Продолжить";
   }
 
+  $("delete-btn").hidden = !(done || stopped);
+  $("delete-error").hidden = true;
   $("result").hidden = !done;
   if (done && renderedFor !== job.id) await renderResult(job);
   if (!done) renderedFor = null;
@@ -199,7 +202,9 @@ function renderSteps(job) {
     return item;
   }));
   const fraction = current < 0 ? 0 : (current + (total ? done / total : 0)) / STEPS.length;
-  $("bar-fill").style.width = `${Math.round(fraction * 100)}%`;
+  const percent = Math.round(fraction * 100);
+  $("bar-fill").style.width = `${percent}%`;
+  $("bar").setAttribute("aria-valuenow", String(percent));
 }
 
 function estimate(job) {
@@ -257,6 +262,15 @@ function bindJob() {
     const button = $("copy-btn");
     button.textContent = "Скопировано";
     setTimeout(() => { button.textContent = "Копировать"; }, 1500);
+  });
+  $("delete-btn").addEventListener("click", async () => {
+    if (!confirm(`Удалить «${currentJob.filename}» вместе с расшифровкой? Это нельзя отменить.`)) return;
+    try {
+      await api(`/api/jobs/${currentJob.id}`, { method: "DELETE" });
+      location.hash = "#/";
+    } catch (err) {
+      showError("delete-error", err.message);
+    }
   });
   bindKeyForm("job-key-form", "job-key-input", "job-key-error",
     () => act(`/api/jobs/${currentJob.id}/resume`, {}));

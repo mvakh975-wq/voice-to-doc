@@ -55,6 +55,20 @@ def check_hostile_document(browser, audio):
     page.close()
 
 
+def check_delete(browser, audio):
+    page = browser.new_page()
+    page.on("dialog", lambda d: d.accept())
+    page.goto(URL)
+    page.set_input_files("#file-input", str(audio))
+    page.click("#upload-btn")
+    expect(page.locator("#doc h1")).to_be_visible(timeout=30000)
+    job_url = page.url
+    page.click("#delete-btn")
+    expect(page.locator("#home")).to_be_visible()
+    assert page.request.get(URL + "/api/jobs/" + job_url.rsplit("/", 1)[1]).status == 404
+    page.close()
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     tmp = Path(tempfile.mkdtemp())
@@ -89,6 +103,7 @@ def main():
                     assert not errors, errors
                     page.close()
             check_hostile_document(browser, audio)
+            check_delete(browser, audio)
             browser.close()
         print(f"OK — screenshots in {OUT}")
     finally:

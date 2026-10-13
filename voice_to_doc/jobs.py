@@ -25,8 +25,21 @@ from voice_to_doc.transcribe import transcribe_chunks
 KINDS = ("lecture", "interview")
 STEPS = ("prepare", "transcribe", "structure", "summary", "render")
 _ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
+_FILENAME_JUNK = re.compile(r"[\x00-\x1f\x7f]")
+MAX_FILENAME = 200
+ACTIVE = ("uploading", "queued", "running")
 MEDIA_EXTS = {".mp3", ".m4a", ".wav", ".ogg", ".oga", ".opus", ".flac", ".aac", ".aiff", ".aif",
               ".caf", ".wma", ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".wmv"}
+
+
+def clean_filename(name: str) -> str:
+    """The original filename is only displayed: drop control characters and cap the length."""
+    name = _FILENAME_JUNK.sub("", name).strip() or "запись"
+    if len(name) > MAX_FILENAME:
+        suffix = Path(name).suffix[:10]
+        stem = name[: len(name) - len(suffix)] if suffix else name
+        name = stem[: MAX_FILENAME - len(suffix)] + suffix
+    return name
 
 
 class JobStore:
@@ -43,6 +56,7 @@ class JobStore:
 
     def create(self, filename: str, kind: str) -> dict:
         job_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+        filename = clean_filename(filename)
         ext = Path(filename).suffix.lower()
         job = {
             "id": job_id, "filename": filename, "source": "source" + (ext if ext in MEDIA_EXTS else ""),
@@ -77,7 +91,12 @@ class JobStore:
             return job
 
     def list(self) -> builtins.list[dict]:
-        jobs = [json.loads(p.read_text(encoding="utf-8")) for p in self.data_dir.glob("*/job.json")]
+        jobs = []
+        for path in self.data_dir.glob("*/job.json"):
+            try:  # a job may be deleted mid-scan; a damaged file must not hide the others
+                jobs.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
         return sorted(jobs, key=lambda j: (j["created_at"], j["id"]), reverse=True)
 
     def log(self, job_id: str, message: str) -> None:
@@ -86,6 +105,14 @@ class JobStore:
 
     def delete(self, job_id: str) -> None:
         shutil.rmtree(self.dir(job_id), ignore_errors=True)
+
+    def delete_if_idle(self, job_id: str) -> bool:
+        """Delete a job and all its files unless it is being uploaded or processed."""
+        with self._lock:
+            if self.get(job_id)["status"] in ACTIVE:
+                return False
+            self.delete(job_id)
+            return True
 
     def recover_interrupted(self) -> builtins.list[str]:
         queued = []
@@ -183,6 +210,7 @@ class Pipeline:
             progress = self._step(job_id, "transcribe")
             transcribe_chunks(d, get_client(), self.whisper_limiter, settings.language,
                               on_progress=progress, sleep=self.sleep, log=log)
+        shutil.rmtree(d / "chunks", ignore_errors=True)  # only needed for transcription; frees disk
 
         if (d / "structured.json").exists():
             structured = json.loads((d / "structured.json").read_text(encoding="utf-8"))

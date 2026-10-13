@@ -130,3 +130,29 @@ def test_oversized_upload_rejected_before_reading_body(client):
     r = client.post("/api/jobs", content=b"x" * 10,
                     headers={"content-type": "multipart/form-data; boundary=b", "content-length": str(3 * 1024**3)})
     assert r.status_code == 413
+
+
+def test_rejections_carry_security_headers(client):
+    r = client.post("/api/settings", json={"groq_api_key": "x"}, headers={"origin": "https://evil.example"})
+    assert r.status_code == 403 and "content-security-policy" in r.headers
+
+
+def test_delete_job(client, tmp_path):
+    job_id = upload(client, make_media(tmp_path / "a.wav", 1)).json()["id"]
+    assert client.delete(f"/api/jobs/{job_id}", headers=SAME_ORIGIN).status_code == 204
+    assert client.get(f"/api/jobs/{job_id}").status_code == 404
+    assert client.delete(f"/api/jobs/{job_id}", headers=SAME_ORIGIN).status_code == 404
+
+
+def test_failed_upload_leaves_no_job(tmp_path):
+    from voice_to_doc.app import save_upload
+    from voice_to_doc.jobs import JobStore
+
+    class Broken:
+        def read(self, n):
+            raise OSError("client went away")
+
+    store = JobStore(tmp_path / "data")
+    with pytest.raises(OSError):
+        save_upload(store, "a.mp3", "lecture", Broken())
+    assert store.list() == [] and not any(store.data_dir.iterdir())

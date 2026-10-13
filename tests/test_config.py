@@ -9,6 +9,7 @@ def test_defaults_when_env_file_missing(tmp_path):
     assert s.llm_model == "openai/gpt-oss-120b"
     assert s.whisper_model == "whisper-large-v3"
     assert (s.chunk_seconds, s.block_tokens, s.llm_tpm) == (600, 2500, 8000)
+    assert s.chars_per_token == 3.5  # measured 3.78 for Russian on gpt-oss; slightly conservative
     assert s.env_path == tmp_path / ".env"
 
 
@@ -47,3 +48,10 @@ def test_saved_key_is_readable_only_by_owner(tmp_path):
     env.chmod(0o644)
     save_api_key("gsk_new", env)
     assert env.stat().st_mode & 0o777 == 0o600
+
+
+def test_invalid_number_gives_readable_error(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("CHUNK_SECONDS=десять\n")
+    with pytest.raises(ValueError, match="CHUNK_SECONDS"):
+        load_settings(env)
