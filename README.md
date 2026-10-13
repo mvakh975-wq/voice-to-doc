@@ -1,6 +1,6 @@
 # voice-to-doc
 
-[![CI](https://github.com/OWNER/voice-to-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/voice-to-doc/actions/workflows/ci.yml)
+[![CI](https://github.com/mvakh975-wq/voice-to-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/mvakh975-wq/voice-to-doc/actions/workflows/ci.yml)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -54,7 +54,7 @@ See [SECURITY.md](SECURITY.md).
 Requirements: macOS or Linux, Python 3.12+, a free [Groq API key](https://console.groq.com/keys).
 
 ```bash
-git clone https://github.com/OWNER/voice-to-doc.git
+git clone https://github.com/mvakh975-wq/voice-to-doc.git
 cd voice-to-doc
 ./run.sh            # creates .venv, installs dependencies, opens http://127.0.0.1:8000
 ```

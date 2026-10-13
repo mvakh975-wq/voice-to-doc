@@ -50,7 +50,7 @@
 Нужно: macOS или Linux, Python 3.12+, бесплатный [ключ Groq](https://console.groq.com/keys).
 
 ```bash
-git clone https://github.com/OWNER/voice-to-doc.git
+git clone https://github.com/mvakh975-wq/voice-to-doc.git
 cd voice-to-doc
 ./run.sh            # создаст .venv, поставит зависимости, откроет http://127.0.0.1:8000
 ```
