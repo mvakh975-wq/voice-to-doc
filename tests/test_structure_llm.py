@@ -107,16 +107,16 @@ def test_empty_transcript_gives_warning(tmp_path, clock):
     write_job(tmp_path, [])
     structured = structure_transcript(tmp_path, "interview", make_llm(FakeGroq(), clock), block_tokens=2500)
     assert structured["items"] == [] and structured["warnings"] == ["В записи не найдено речи."]
-    doc = make_document(structured, make_llm(FakeGroq(), clock), "файл", 2500)
+    doc = make_document(structured, make_llm(FakeGroq(), clock), "файл")
     assert doc["title"] == "файл" and doc["summary"] == []
 
 
 def test_make_document_uses_summary_and_falls_back(clock):
     structured = {"kind": "lecture", "duration_s": 60.0, "warnings": [],
                   "items": [{"title": "A", "start": 0.0, "paragraphs": ["Текст."]}]}
-    doc = make_document(structured, make_llm(FakeGroq(), clock), "файл", 2500)
+    doc = make_document(structured, make_llm(FakeGroq(), clock), "файл")
     assert doc["title"] == "Тестовая запись" and doc["summary"] == ["Первый тезис", "Второй тезис"]
-    bad = make_document(structured, make_llm(Scripted({"title": 5}), clock), "файл", 2500)
+    bad = make_document(structured, make_llm(Scripted({"title": 5}), clock), "файл")
     assert bad["title"] == "файл" and bad["warnings"] == ["Не удалось составить выжимку."]
 
 
@@ -152,7 +152,27 @@ def test_changed_block_settings_restart_structuring(tmp_path, clock):
 def test_summary_and_fallback_title_lose_control_characters(clock):
     structured = {"kind": "lecture", "duration_s": 60.0, "warnings": [],
                   "items": [{"title": "A", "start": 0.0, "paragraphs": ["Текст."]}]}
-    doc = make_document(structured, make_llm(Scripted({"title": "Т\x0bитул", "summary": ["пункт\x00"]}), clock), "f", 2500)
+    doc = make_document(structured, make_llm(Scripted({"title": "Т\x0bитул", "summary": ["пункт\x00"]}), clock), "f")
     assert (doc["title"], doc["summary"]) == ("Титул", ["пункт"])
     empty = {**structured, "items": []}
-    assert make_document(empty, make_llm(FakeGroq(), clock), "фа\x1bйл", 2500)["title"] == "файл"
+    assert make_document(empty, make_llm(FakeGroq(), clock), "фа\x1bйл")["title"] == "файл"
+
+
+def test_summary_sees_whole_sections_when_they_fit():
+    from voice_to_doc.structure import summary_input
+
+    tail = "ФИНАЛЬНАЯ МЫСЛЬ"
+    structured = {"kind": "lecture", "duration_s": 60.0, "warnings": [],
+                  "items": [{"title": "A", "start": 0.0, "paragraphs": ["слово " * 300, tail]}]}
+    assert tail in summary_input(structured, long=False, max_chars=5000)
+
+
+def test_summary_input_shares_budget_between_sections():
+    from voice_to_doc.structure import summary_input
+
+    items = [{"title": f"Раздел {i}", "start": float(i), "paragraphs": [f"начало{i} " + "слово " * 400]}
+             for i in range(10)]
+    text = summary_input({"kind": "lecture", "duration_s": 600.0, "warnings": [], "items": items},
+                         long=False, max_chars=5000)
+    assert len(text) <= 5000
+    assert all(f"начало{i}" in text for i in range(10))

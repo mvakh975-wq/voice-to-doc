@@ -153,6 +153,7 @@ SYSTEM_SUMMARY = """# task: summary
 
 OUTPUT_OVERHEAD_TOKENS = 600
 SUMMARY_MAX_TOKENS = 1200
+SUMMARY_INPUT_TOKENS = 5000  # + system prompt + SUMMARY_MAX_TOKENS stays under the 8000 TPM limit
 
 STRICT_NOTE = (
     "\n\nВАЖНО: прошлый ответ был неполным или неверным. Верни ВЕСЬ текст фрагмента в указанном JSON, "
@@ -278,26 +279,30 @@ def structure_transcript(job_dir: Path, kind: str, llm: LLM, block_tokens: int, 
 
 
 def summary_input(structured: dict, long: bool, max_chars: int) -> str:
+    items = structured["items"]
+    # Every section gets an equal share of the budget, so the summary sees the whole talk,
+    # not just the opening lines of each section.
+    share = max(200, max_chars // max(len(items), 1) - 40)
     lines = []
-    for it in structured["items"]:
+    for it in items:
         ts = fmt_ts(it["start"], long)
         if structured["kind"] == "lecture":
-            lines.append(f"[{ts}] {it['title']}: {' '.join(it['paragraphs'])[:300]}")
+            lines.append(f"[{ts}] {it['title']}: {' '.join(it['paragraphs'])[:share]}")
         else:
-            lines.append(f"[{ts}] {it['speaker'] or 'Неизвестно'}: {it['text'][:200]}")
+            lines.append(f"[{ts}] {it['speaker'] or 'Неизвестно'}: {it['text'][:share]}")
     step = 1
     while step < len(lines) and len("\n".join(lines[::step])) > max_chars:
         step += 1
     return "\n".join(lines[::step])
 
 
-def make_document(structured: dict, llm: LLM, fallback_title: str, block_tokens: int) -> dict:
+def make_document(structured: dict, llm: LLM, fallback_title: str) -> dict:
     doc = {**structured, "title": _clean(fallback_title) or "Документ", "summary": [],
            "warnings": list(structured["warnings"])}
     if not structured["items"]:
         return doc
     long = structured["duration_s"] >= 3600
-    data = llm.ask(SYSTEM_SUMMARY, summary_input(structured, long, int(block_tokens * llm.chars_per_token)),
+    data = llm.ask(SYSTEM_SUMMARY, summary_input(structured, long, int(SUMMARY_INPUT_TOKENS * llm.chars_per_token)),
                    SUMMARY_MAX_TOKENS)
     data = data if isinstance(data, dict) else {}
     title, summary = data.get("title"), data.get("summary")

@@ -222,7 +222,7 @@ class Pipeline:
             doc = json.loads((d / "document.json").read_text(encoding="utf-8"))
         else:
             self._step(job_id, "summary")
-            doc = make_document(structured, llm(), Path(job["filename"]).stem, settings.block_tokens)
+            doc = make_document(structured, llm(), Path(job["filename"]).stem)
             write_text_atomic(d / "document.json", json.dumps(doc, ensure_ascii=False))
 
         self._step(job_id, "render")

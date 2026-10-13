@@ -25,14 +25,14 @@ upload ─► ffmpeg: mono 16 kHz opus, 10-min chunks
        ─► summary ─► Markdown + .docx
 ```
 
-Every step saves its result to `data/<job>/`, so an interrupted job resumes from the first unfinished step without spending quota twice.
+Every step saves its result to `data/<job>/`, so an interrupted job resumes from the first unfinished step without spending quota twice. Recordings and transcripts stay on your disk until you delete them from the page.
 
 ## Engineering highlights
 
 - **Free-tier aware.** A client-side limiter tracks requests and tokens per minute; the output budget is sized per block because Groq counts `max_completion_tokens` toward the limit. Minute limits are waited out; a daily limit pauses the job with a "Continue" button.
 - **Untrusted model output.** JSON is validated against a schema; invented timestamps are snapped to real segment starts; an answer much shorter than the input (a sign of paraphrasing) is retried with a stricter prompt, then falls back to the raw text with a visible note.
 - **Resumable and crash-safe.** Atomic file writes, per-chunk and per-block checkpoints, atomic status transitions, a single worker that survives failing jobs.
-- **Tested.** ~100 offline tests (pytest, Groq replaced by a fake), a live end-to-end test against the real API, and a Playwright browser check in light/dark themes at desktop and phone widths.
+- **Tested.** ~120 offline tests (pytest, Groq replaced by a fake), a live end-to-end test against the real API, and a Playwright browser check in light/dark themes at desktop and phone widths.
 
 ## Security
 
@@ -61,7 +61,7 @@ cd voice-to-doc
 
 On first launch the page asks for the Groq key. ffmpeg is bundled — nothing else to install.
 
-Free-tier capacity (Groq, October 2026): about 8 hours of audio and 200k LLM tokens per day — roughly 3–4 hours of recordings.
+Free-tier capacity (Groq, October 2026): about 8 hours of audio and 200k LLM tokens per day — roughly 5 hours of Russian speech by our estimate (≈3.8 characters per token, measured).
 
 ## Development
 
