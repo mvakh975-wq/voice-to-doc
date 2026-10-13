@@ -147,3 +147,12 @@ def test_changed_block_settings_restart_structuring(tmp_path, clock):
     structured = structure_transcript(tmp_path, "lecture", make_llm(again, clock), block_tokens=10000)
     assert len(again.calls) == 1 and len(structured["items"]) == 1
     assert not (tmp_path / "blocks" / "001.json").exists()
+
+
+def test_summary_and_fallback_title_lose_control_characters(clock):
+    structured = {"kind": "lecture", "duration_s": 60.0, "warnings": [],
+                  "items": [{"title": "A", "start": 0.0, "paragraphs": ["Текст."]}]}
+    doc = make_document(structured, make_llm(Scripted({"title": "Т\x0bитул", "summary": ["пункт\x00"]}), clock), "f", 2500)
+    assert (doc["title"], doc["summary"]) == ("Титул", ["пункт"])
+    empty = {**structured, "items": []}
+    assert make_document(empty, make_llm(FakeGroq(), clock), "фа\x1bйл", 2500)["title"] == "файл"

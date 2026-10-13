@@ -49,3 +49,33 @@ def test_garbage_file_raises_readable_error(tmp_path):
     assert str(exc.value) == READ_ERROR
     assert exc.value.detail
     assert not (tmp_path / "job" / "chunks.json").exists()
+
+
+def test_playlist_cannot_pull_in_other_local_files(tmp_path):
+    secret = make_media(tmp_path / "secret.wav", 3)
+    for name, body in [
+        ("evil.m3u8", f"#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXTINF:3,\nfile://{secret}\n#EXT-X-ENDLIST\n"),
+        ("evil", f"ffconcat version 1.0\nfile '{secret}'\n"),
+    ]:
+        src = tmp_path / name
+        src.write_text(body)
+        with pytest.raises(AudioError):
+            prepare_audio(src, tmp_path / f"job-{name}", chunk_seconds=600)
+
+
+def test_accepts_common_formats(tmp_path):
+    for ext in ("mp3", "m4a", "ogg", "flac", "aiff", "webm"):
+        src = make_media(tmp_path / f"in.{ext}", 1)
+        assert prepare_audio(src, tmp_path / f"job-{ext}", chunk_seconds=600)["chunks"]
+
+
+def test_too_long_recording_is_rejected(tmp_path):
+    src = make_media(tmp_path / "in.wav", 5)
+    with pytest.raises(AudioError, match="длиннее"):
+        prepare_audio(src, tmp_path / "job", chunk_seconds=600, max_seconds=3)
+
+
+def test_ffmpeg_timeout_is_an_audio_error(tmp_path):
+    src = make_media(tmp_path / "in.wav", 5)
+    with pytest.raises(AudioError, match="слишком долго"):
+        prepare_audio(src, tmp_path / "job", chunk_seconds=600, timeout=0.001)

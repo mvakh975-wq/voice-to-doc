@@ -96,3 +96,10 @@ def test_is_too_short():
 @pytest.mark.parametrize("value,expected", [("[05:30]", 330.0), (" [1:02:05] ", 3725.0)])
 def test_parse_ts_accepts_bracketed_timestamps(value, expected):
     assert parse_ts(value) == expected
+
+
+def test_control_characters_are_stripped_from_model_output():
+    data = {"sections": [{"title": "A\x0bB", "start": "00:00", "paragraphs": ["x\x00y\x1bz", "\x07"]}]}
+    assert validate_lecture(data, [0.0])["sections"] == [{"title": "AB", "start": 0.0, "paragraphs": ["xyz"]}]
+    data = {"utterances": [{"speaker": "Собеседник", "start": "00:00", "text": "ок\x0c\tда\n"}]}
+    assert validate_interview(data, [0.0])["utterances"][0]["text"] == "ок\tда"

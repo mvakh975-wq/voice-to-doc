@@ -24,13 +24,15 @@ from voice_to_doc.transcribe import transcribe_chunks
 KINDS = ("lecture", "interview")
 STEPS = ("prepare", "transcribe", "structure", "summary", "render")
 _ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
-_EXT = re.compile(r"^\.[a-z0-9]{1,5}$")
+MEDIA_EXTS = {".mp3", ".m4a", ".wav", ".ogg", ".oga", ".opus", ".flac", ".aac", ".aiff", ".aif",
+              ".caf", ".wma", ".mp4", ".mov", ".m4v", ".mkv", ".webm", ".avi", ".wmv"}
 
 
 class JobStore:
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.chmod(0o700)  # transcripts are private
         self._lock = threading.Lock()
 
     def dir(self, job_id: str) -> Path:
@@ -42,12 +44,12 @@ class JobStore:
         job_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
         ext = Path(filename).suffix.lower()
         job = {
-            "id": job_id, "filename": filename, "source": "source" + (ext if _EXT.match(ext) else ""),
+            "id": job_id, "filename": filename, "source": "source" + (ext if ext in MEDIA_EXTS else ""),
             "kind": kind, "created_at": datetime.now().isoformat(timespec="seconds"), "duration_s": None,
             "status": "uploading", "step": None, "progress": {"done": 0, "total": 0},
             "step_started_at": None, "message": "", "reason": None,
         }
-        self.dir(job_id).mkdir(parents=True)
+        self.dir(job_id).mkdir(mode=0o700)
         self._write(job)
         return job
 
@@ -132,9 +134,9 @@ class Pipeline:
             self._stop(job_id, "paused", "network", "Нет связи с Groq — проверьте интернет и нажмите «Продолжить»")
         except GroqError as e:
             self._stop(job_id, "error", "groq", str(e))
-        except Exception as e:  # noqa: BLE001 — the worker must survive anything
+        except Exception:  # noqa: BLE001 — the worker must survive anything
             log(traceback.format_exc())
-            self._stop(job_id, "error", "internal", f"Внутренняя ошибка: {e}")
+            self._stop(job_id, "error", "internal", "Внутренняя ошибка — подробности в файле log.txt задания")
         else:
             self.store.update(job_id, status="done", step=None, message="")
             log("Готово")

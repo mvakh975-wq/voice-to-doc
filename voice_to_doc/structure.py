@@ -1,6 +1,7 @@
 """Turn a raw transcript into a structured document with the help of an LLM."""
 
 import json
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -62,8 +63,12 @@ def snap_start(value, allowed: list[float]) -> float:
     return min(allowed, key=lambda a: abs(a - t))
 
 
+# XML (and so .docx) rejects these; model output or a filename may contain them.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
 def _clean(value) -> str:
-    return value.strip() if isinstance(value, str) else ""
+    return _CONTROL.sub("", value).strip() if isinstance(value, str) else ""
 
 
 def _monotonic(items: list[dict]) -> list[dict]:
@@ -284,7 +289,8 @@ def summary_input(structured: dict, long: bool, max_chars: int) -> str:
 
 
 def make_document(structured: dict, llm: LLM, fallback_title: str, block_tokens: int) -> dict:
-    doc = {**structured, "title": fallback_title, "summary": [], "warnings": list(structured["warnings"])}
+    doc = {**structured, "title": _clean(fallback_title) or "Документ", "summary": [],
+           "warnings": list(structured["warnings"])}
     if not structured["items"]:
         return doc
     long = structured["duration_s"] >= 3600
@@ -292,10 +298,10 @@ def make_document(structured: dict, llm: LLM, fallback_title: str, block_tokens:
                    SUMMARY_MAX_TOKENS)
     data = data if isinstance(data, dict) else {}
     title, summary = data.get("title"), data.get("summary")
-    if isinstance(title, str) and title.strip():
-        doc["title"] = title.strip()
+    if _clean(title):
+        doc["title"] = _clean(title)
     if isinstance(summary, list):
-        doc["summary"] = [s.strip() for s in summary if isinstance(s, str) and s.strip()][:7]
+        doc["summary"] = [s for s in map(_clean, summary) if s][:7]
     if not doc["summary"]:
         doc["warnings"].append("Не удалось составить выжимку.")
     return doc

@@ -10,18 +10,21 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-dev.txt -c constraints.txt
       - name: Tests (offline, Groq is faked)
         run: pytest -q --timeout=120
       - name: Known vulnerabilities in dependencies
-        run: pip-audit -r requirements.txt
+        run: pip-audit -r constraints.txt
       - name: Static security scan
         run: bandit -q -r voice_to_doc

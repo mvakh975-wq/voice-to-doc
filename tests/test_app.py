@@ -124,3 +124,9 @@ def test_page_loads_only_local_scripts():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     sources = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
     assert sources and all(src.startswith("/static/") for src in sources)
+
+
+def test_oversized_upload_rejected_before_reading_body(client):
+    r = client.post("/api/jobs", content=b"x" * 10,
+                    headers={"content-type": "multipart/form-data; boundary=b", "content-length": str(3 * 1024**3)})
+    assert r.status_code == 413

@@ -14,6 +14,7 @@ from voice_to_doc.jobs import KINDS, JobStore, Pipeline, Worker
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD = 2 * 1024**3
+UPLOAD_OVERHEAD = 1024**2  # multipart boundaries and form fields
 MEDIA_TYPES = {
     "md": "text/markdown; charset=utf-8",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -75,6 +76,10 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
             return PlainTextResponse("Unknown host", status_code=400)
         if request.method not in SAFE_METHODS and _is_cross_site(request):
             return JSONResponse({"detail": "Запрос с чужого сайта отклонён"}, status_code=403)
+        # Starlette spools the whole body to disk before the handler runs: refuse early.
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_UPLOAD + UPLOAD_OVERHEAD:
+            return JSONResponse({"detail": "Файл больше 2 ГБ"}, status_code=413)
         response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)
         return response

@@ -108,8 +108,10 @@ def test_unexpected_exception_is_internal_error(store, tmp_path, clock):
     p, _ = pipeline(store, clock, client=Boom())
     p.run(job["id"])
     job = store.get(job["id"])
-    assert (job["status"], job["reason"]) == ("error", "internal") and "boom" in job["message"]
-    assert "Traceback" in (store.dir(job["id"]) / "log.txt").read_text()
+    assert (job["status"], job["reason"]) == ("error", "internal") and "boom" not in job["message"]
+    assert "log.txt" in job["message"]
+    log = (store.dir(job["id"]) / "log.txt").read_text()
+    assert "Traceback" in log and "boom" in log
 
 
 def test_restructure_reuses_transcript(store, tmp_path, clock):
@@ -197,3 +199,14 @@ def test_rate_limit_wait_is_shown_in_job_message(store, tmp_path, clock):
     p.run(job["id"])
     assert any(m.startswith("Лимит Groq") for m in seen)
     assert store.get(job["id"])["message"] == ""
+
+
+def test_data_dirs_are_private(store):
+    job = store.create("a.mp3", "lecture")
+    assert store.data_dir.stat().st_mode & 0o777 == 0o700
+    assert store.dir(job["id"]).stat().st_mode & 0o777 == 0o700
+
+
+def test_unknown_extensions_are_not_kept(store):
+    assert store.create("x.m3u8", "lecture")["source"] == "source"
+    assert store.create("x.FLAC", "lecture")["source"] == "source.flac"

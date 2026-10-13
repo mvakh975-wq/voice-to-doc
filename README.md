@@ -1,7 +1,7 @@
 # voice-to-doc
 
 [![CI](https://github.com/OWNER/voice-to-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/voice-to-doc/actions/workflows/ci.yml)
-![Python 3.14](https://img.shields.io/badge/python-3.14-blue)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 **Turns a recorded lecture or interview into a structured document** — a short summary, a near-verbatim text split into titled sections with timestamps, or speaker-labelled replies for interviews. Download as Word or Markdown.
@@ -42,14 +42,16 @@ Designed as a local single-user tool:
 - requests with a foreign `Host` (DNS rebinding) or from another site (CSRF) are rejected;
 - strict Content-Security-Policy with no third-party scripts (the Markdown renderer is vendored);
 - model output is HTML-escaped, and only `http(s)` links survive;
+- uploads: extension allowlist, 2 GB / 6 h limits, ffmpeg without playlist demuxers (no reading other local files);
 - the API key lives in `.env` with owner-only permissions and is never logged or returned by the API;
-- CI runs `pip-audit` (known CVEs in dependencies) and `bandit` (static analysis).
+- all dependency versions pinned; CI runs `pip-audit` (known CVEs) and `bandit` (static analysis);
+- an independent security audit found no critical, high or medium issues; all low findings fixed.
 
 See [SECURITY.md](SECURITY.md).
 
 ## Quick start
 
-Requirements: macOS or Linux, Python 3.14, a free [Groq API key](https://console.groq.com/keys).
+Requirements: macOS or Linux, Python 3.12+, a free [Groq API key](https://console.groq.com/keys).
 
 ```bash
 git clone https://github.com/OWNER/voice-to-doc.git
