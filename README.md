@@ -80,10 +80,6 @@ Design notes: [specification](docs/design/spec.md) and [implementation plan](doc
 - Rare terms may be misrecognized by Whisper (the demo turns "ARPANET" into "Orpnet").
 - Built for Russian; other languages need a different `LANGUAGE` and prompts.
 
-## Built with AI assistance
-
-Designed and built together with Claude Code: I set the requirements and constraints and approved the design and the plan; the AI wrote most of the code under test-driven development. Commits are co-authored accordingly.
-
 ## License
 
 [MIT](LICENSE)

@@ -1,7 +1,5 @@
 # voice-to-doc Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Локальное веб-приложение: загружаешь запись лекции/интервью → получаешь структурированный документ (выжимка + почти дословный текст по разделам/репликам с таймкодами) в Markdown и .docx.
 
 **Architecture:** FastAPI-сервер на `127.0.0.1` с одним фоновым потоком-обработчиком. Конвейер задания: ffmpeg режет звук на куски → Groq Whisper распознаёт → Groq LLM оформляет блоками → выжимка → рендер. Каждый шаг пишет результат в `data/<job_id>/`, поэтому задание возобновляется с первого незавершённого шага. Все сетевые вызовы идут через `groq_client.py`, который в тестах подменяется `devfake.FakeGroq`.
@@ -24,7 +22,6 @@
 - Тексты интерфейса и сообщения — на русском. UI: нейтральная палитра + один акцент, без градиентов и эмодзи, светлая/тёмная тема по системе, ширина документа ≤ 760 px, без горизонтальной прокрутки на 375 px.
 - Таймкоды: `MM:SS` для записей короче 3600 с; для записей ≥ 3600 с — везде `H:MM:SS`.
 - Отклонение от спецификации (уточнение): в `structured.json`/`document.json` разделы и реплики хранятся в одном поле `items` (тип определяется `kind`); таймкоды хранятся в секундах (float).
-- Коммиты заканчиваются строкой `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
@@ -277,9 +274,7 @@ Expected: 8 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat: project scaffold and settings
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: project scaffold and settings"
 ```
 
 ---
@@ -433,9 +428,7 @@ Expected: 5 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat: audio preparation with ffmpeg chunking
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: audio preparation with ffmpeg chunking"
 ```
 
 ---
@@ -712,9 +705,7 @@ Expected: 6 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat: Groq client wrapper and offline fake
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: Groq client wrapper and offline fake"
 ```
 
 ---
@@ -864,9 +855,7 @@ Expected: 7 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: rate limiter and retry policy
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: rate limiter and retry policy"
 ```
 
 ---
@@ -989,9 +978,7 @@ Expected: 3 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: resumable chunk transcription
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: resumable chunk transcription"
 ```
 
 ---
@@ -1227,9 +1214,7 @@ Expected: all passed (≈ 25 с параметризацией)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: timestamps, block packing and LLM output validation
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: timestamps, block packing and LLM output validation"
 ```
 
 ---
@@ -1571,9 +1556,7 @@ Expected: all passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat: LLM structuring with retries, fallback, merge and summary
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: LLM structuring with retries, fallback, merge and summary"
 ```
 
 ---
@@ -1709,9 +1692,7 @@ Expected: 4 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: markdown and docx rendering
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: markdown and docx rendering"
 ```
 
 ---
@@ -2101,9 +2082,7 @@ Expected: все тесты зелёные
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat: job store, resumable pipeline and worker
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: job store, resumable pipeline and worker"
 ```
 
 ---
@@ -2362,9 +2341,7 @@ Expected: 7 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat: HTTP API
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: HTTP API"
 ```
 
 ---
@@ -2979,9 +2956,7 @@ Expected: все зелёные
 - [ ] **Step 9: Commit**
 
 ```bash
-git add -A && git commit -m "feat: web UI, run script and browser check
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "feat: web UI, run script and browser check"
 ```
 
 ---
@@ -3083,9 +3058,7 @@ Expected: 1 passed; в выводе — документ с заголовком
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "test: live Groq check; docs: README
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add -A && git commit -m "test: live Groq check; docs: README"
 ```
 
 - [ ] **Step 5: Передать пользователю на приёмку**
