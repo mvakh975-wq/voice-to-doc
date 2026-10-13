@@ -39,3 +39,11 @@ def test_save_api_key_replaces_old_key_and_keeps_other_lines(tmp_path):
 def test_save_api_key_rejects_empty_and_whitespace(tmp_path, bad):
     with pytest.raises(ValueError):
         save_api_key(bad, tmp_path / ".env")
+
+
+def test_saved_key_is_readable_only_by_owner(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("LLM_MODEL=x\n")
+    env.chmod(0o644)
+    save_api_key("gsk_new", env)
+    assert env.stat().st_mode & 0o777 == 0o600

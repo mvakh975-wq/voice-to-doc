@@ -137,3 +137,13 @@ def test_output_budget_is_capped(clock):
     client = Recording({"utterances": [{"speaker": "Собеседник", "start": "00:00", "text": "слово " * 3000}]})
     structure_block(huge, "interview", "", make_llm(client, clock), long=False)
     assert client.max_tokens == 4000
+
+
+def test_changed_block_settings_restart_structuring(tmp_path, clock):
+    segments = [{"start": float(i * 10), "end": float(i * 10 + 9), "text": f"Фраза номер {i}. " * 10} for i in range(4)]
+    write_job(tmp_path, segments)
+    structure_transcript(tmp_path, "lecture", make_llm(FakeGroq(), clock), block_tokens=100)
+    again = FakeGroq()
+    structured = structure_transcript(tmp_path, "lecture", make_llm(again, clock), block_tokens=10000)
+    assert len(again.calls) == 1 and len(structured["items"]) == 1
+    assert not (tmp_path / "blocks" / "001.json").exists()

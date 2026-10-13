@@ -66,4 +66,8 @@ def save_api_key(key: str, env_path: Path = ENV_PATH) -> None:
     lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     lines = [line for line in lines if not line.startswith("GROQ_API_KEY=")]
     lines.append(f"GROQ_API_KEY={key}")
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # The file holds a secret: create it owner-only and tighten an existing one.
+    fd = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")

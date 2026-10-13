@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from tests.conftest import make_media  # noqa: E402
 
+MALICIOUS_MD = (
+    "# Документ\n\n[клик](javascript:alert(1)) [сайт](https://example.com)\n\n"
+    "<img src=x onerror=alert(1)> ![трекер](http://evil.example/p.png)\n\n<script>alert(1)</script>\n"
+)
 PORT = 8765
 URL = f"http://127.0.0.1:{PORT}"
 OUT = ROOT / "screenshots"
@@ -30,6 +34,25 @@ def wait_for_server():
         except OSError:
             time.sleep(0.2)
     raise RuntimeError("server did not start")
+
+
+def check_hostile_document(browser, audio):
+    """Model output is untrusted: links, images and scripts in it must be neutralised."""
+    page = browser.new_page()
+    dialogs = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    page.route("**/result.md", lambda route: route.fulfill(
+        status=200, content_type="text/markdown; charset=utf-8", body=MALICIOUS_MD))
+    page.goto(URL)
+    page.set_input_files("#file-input", str(audio))
+    page.click("#upload-btn")
+    expect(page.locator("#doc h1")).to_have_text("Документ", timeout=30000)
+    assert page.locator("#doc a[href^='javascript']").count() == 0
+    assert page.locator("#doc a[href='https://example.com']").get_attribute("rel") == "noopener noreferrer"
+    assert page.locator("#doc img, #doc script").count() == 0
+    page.wait_for_timeout(500)
+    assert not dialogs, dialogs
+    page.close()
 
 
 def main():
@@ -51,6 +74,7 @@ def main():
                     page = browser.new_page(viewport=viewport, color_scheme=scheme)
                     errors = []
                     page.on("pageerror", lambda e: errors.append(str(e)))
+                    page.on("console", lambda m: m.type == "error" and errors.append(m.text))
                     page.goto(URL)
                     expect(page.locator("#upload-form")).to_be_visible()
                     page.screenshot(path=OUT / f"home-{name}-{scheme}.png", full_page=True)
@@ -64,6 +88,7 @@ def main():
                     assert scroll_width <= viewport["width"], f"horizontal scroll on {name}: {scroll_width}px"
                     assert not errors, errors
                     page.close()
+            check_hostile_document(browser, audio)
             browser.close()
         print(f"OK — screenshots in {OUT}")
     finally:

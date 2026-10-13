@@ -1,9 +1,10 @@
 """HTTP API and static page. Run: uvicorn --factory voice_to_doc.app:create_app"""
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -17,6 +18,32 @@ MEDIA_TYPES = {
     "md": "text/markdown; charset=utf-8",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
+
+
+ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "; ".join([
+        "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:",
+        "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+def _hostname(netloc: str) -> str:
+    return urlsplit(f"//{netloc}").hostname or ""
+
+
+def _is_cross_site(request: Request) -> bool:
+    # Browsers attach Origin / Sec-Fetch-Site to every cross-site POST; non-browser clients may omit them.
+    origin = request.headers.get("origin")
+    if origin is not None and origin != f"{request.url.scheme}://{request.headers.get('host', '')}":
+        return True
+    return request.headers.get("sec-fetch-site") in ("cross-site", "same-site")
 
 
 class KeyIn(BaseModel):
@@ -39,6 +66,18 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
 
     app = FastAPI(title="voice-to-doc")
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        # Host check stops DNS rebinding; the cross-site check stops other web pages
+        # in the user's browser from driving this local API (CSRF).
+        if _hostname(request.headers.get("host", "")) not in ALLOWED_HOSTS:
+            return PlainTextResponse("Unknown host", status_code=400)
+        if request.method not in SAFE_METHODS and _is_cross_site(request):
+            return JSONResponse({"detail": "Запрос с чужого сайта отклонён"}, status_code=403)
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        return response
 
     def job_or_404(job_id: str) -> dict:
         try:
@@ -68,12 +107,14 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
         return {"has_key": True}
 
     @app.post("/api/jobs")
-    async def create_job(file: UploadFile = File(...), kind: str = Form(...)):
+    def create_job(file: UploadFile = File(...), kind: str = Form(...)):
+        # Sync handler: FastAPI runs it in a thread pool, so copying a big file
+        # does not block the event loop.
         check_kind(kind)
         job = store.create(file.filename or "запись", kind)
         size = 0
         with open(store.dir(job["id"]) / job["source"], "wb") as out:
-            while chunk := await file.read(1024 * 1024):
+            while chunk := file.file.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_UPLOAD:
                     break
@@ -81,6 +122,7 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
         if size > MAX_UPLOAD:
             store.delete(job["id"])
             raise HTTPException(413, "Файл больше 2 ГБ")
+        store.update(job["id"], status="queued")
         worker.submit(job["id"])
         return {"id": job["id"]}
 
@@ -94,20 +136,20 @@ def create_app(settings_loader=load_settings, client_factory=make_client, inline
 
     @app.post("/api/jobs/{job_id}/resume")
     def resume(job_id: str):
-        if job_or_404(job_id)["status"] not in ("paused", "error"):
+        job_or_404(job_id)
+        if not store.transition(job_id, ("paused", "error"), status="queued", message="", reason=None):
             raise HTTPException(409, "Запись уже обрабатывается или готова")
-        store.update(job_id, status="queued", message="", reason=None)
         worker.submit(job_id)
         return store.get(job_id)
 
     @app.post("/api/jobs/{job_id}/restructure")
     def restructure(job_id: str, body: KindIn):
-        job = job_or_404(job_id)
+        job_or_404(job_id)
         check_kind(body.kind)
-        if job["status"] in ("queued", "running"):
-            raise HTTPException(409, "Запись ещё обрабатывается")
         if not (store.dir(job_id) / "transcript.json").exists():
             raise HTTPException(409, "Сначала нужна расшифровка")
+        if not store.transition(job_id, ("done", "paused", "error"), status="queued"):
+            raise HTTPException(409, "Запись ещё обрабатывается")
         pipeline.restructure(job_id, body.kind)
         worker.submit(job_id)
         return store.get(job_id)

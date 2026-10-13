@@ -1,6 +1,7 @@
 """Turn a raw transcript into a structured document with the help of an LLM."""
 
 import json
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -242,7 +243,13 @@ def structure_transcript(job_dir: Path, kind: str, llm: LLM, block_tokens: int, 
     long = duration >= 3600
     blocks = pack_blocks(segments, block_tokens, llm.chars_per_token)
     out_dir = job_dir / "blocks"
+    # Saved blocks only line up with the packing that produced them.
+    meta = {"kind": kind, "block_tokens": block_tokens, "chars_per_token": llm.chars_per_token}
+    meta_path = out_dir / "meta.json"
+    if out_dir.exists() and (not meta_path.exists() or _read_json(meta_path) != meta):
+        shutil.rmtree(out_dir)
     out_dir.mkdir(exist_ok=True)
+    _write_json(meta_path, meta)
     results = []
     for i, block in enumerate(blocks):
         path = out_dir / f"{i:03d}.json"

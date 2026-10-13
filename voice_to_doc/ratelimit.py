@@ -7,6 +7,8 @@ from voice_to_doc.groq_client import DailyLimitExceeded, RateLimited, Unavailabl
 
 WINDOW = 60.0
 UNAVAILABLE_DELAYS = (2, 4, 8)
+# Log lines that mean "waiting, not stuck" — the pipeline also shows them in the UI.
+WAIT_PREFIXES = ("Лимит Groq", "Нет связи с Groq")
 
 
 class RateLimiter:

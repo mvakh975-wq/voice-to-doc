@@ -1,6 +1,7 @@
 """Jobs: on-disk state, the processing pipeline and a single background worker."""
 
 import json
+import logging
 import queue
 import re
 import shutil
@@ -15,7 +16,7 @@ from voice_to_doc.audio import AudioError, prepare_audio
 from voice_to_doc.config import load_settings
 from voice_to_doc.fsutil import write_text_atomic
 from voice_to_doc.groq_client import AuthError, DailyLimitExceeded, GroqError, Unavailable, make_client
-from voice_to_doc.ratelimit import RateLimiter
+from voice_to_doc.ratelimit import WAIT_PREFIXES, RateLimiter
 from voice_to_doc.render import to_docx, to_markdown
 from voice_to_doc.structure import LLM, make_document, structure_transcript
 from voice_to_doc.transcribe import transcribe_chunks
@@ -43,7 +44,7 @@ class JobStore:
         job = {
             "id": job_id, "filename": filename, "source": "source" + (ext if _EXT.match(ext) else ""),
             "kind": kind, "created_at": datetime.now().isoformat(timespec="seconds"), "duration_s": None,
-            "status": "queued", "step": None, "progress": {"done": 0, "total": 0},
+            "status": "uploading", "step": None, "progress": {"done": 0, "total": 0},
             "step_started_at": None, "message": "", "reason": None,
         }
         self.dir(job_id).mkdir(parents=True)
@@ -59,6 +60,16 @@ class JobStore:
     def update(self, job_id: str, **fields) -> dict:
         with self._lock:
             job = {**self.get(job_id), **fields}
+            self._write(job)
+            return job
+
+    def transition(self, job_id: str, from_statuses: tuple[str, ...], **fields) -> dict | None:
+        """Atomically update the job only if its status is one of from_statuses."""
+        with self._lock:
+            job = self.get(job_id)
+            if job["status"] not in from_statuses:
+                return None
+            job.update(fields)
             self._write(job)
             return job
 
@@ -80,6 +91,8 @@ class JobStore:
                 self.update(job["id"], status="paused", reason="restart", message="Работа прервана перезапуском программы")
             elif job["status"] == "queued":
                 queued.append(job["id"])
+            elif job["status"] == "uploading":
+                self.delete(job["id"])  # the upload was cut off; the file is incomplete
         return queued
 
     def _write(self, job: dict) -> None:
@@ -99,7 +112,11 @@ class Pipeline:
         self.llm_limiter = RateLimiter(settings.llm_rpm, settings.llm_tpm, clock=clock, sleep=sleep)
 
     def run(self, job_id: str) -> None:
-        log = lambda message: self.store.log(job_id, message)  # noqa: E731
+        def log(message: str) -> None:
+            self.store.log(job_id, message)
+            if message.startswith(WAIT_PREFIXES):
+                self.store.update(job_id, message=message)
+
         self.store.update(job_id, status="running", message="", reason=None)
         log("Старт обработки")
         try:
@@ -136,7 +153,7 @@ class Pipeline:
 
     def _step(self, job_id, name):
         self.store.update(job_id, step=name, progress={"done": 0, "total": 0}, step_started_at=time.time())
-        return lambda done, total: self.store.update(job_id, progress={"done": done, "total": total})
+        return lambda done, total: self.store.update(job_id, progress={"done": done, "total": total}, message="")
 
     def _run_steps(self, job_id: str, log) -> None:
         settings = self.settings_loader()
@@ -202,4 +219,8 @@ class Worker:
 
     def _loop(self) -> None:
         while True:
-            self.pipeline.run(self._queue.get())
+            job_id = self._queue.get()
+            try:
+                self.pipeline.run(job_id)
+            except Exception:  # noqa: BLE001 — one broken job must not stop the queue
+                logging.getLogger(__name__).exception("job %s crashed the worker", job_id)

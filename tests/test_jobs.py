@@ -129,8 +129,71 @@ def test_recover_interrupted(store):
     queued = store.create("b.mp3", "lecture")
     done = store.create("c.mp3", "lecture")
     store.update(running["id"], status="running")
+    store.update(queued["id"], status="queued")
     store.update(done["id"], status="done")
     assert store.recover_interrupted() == [queued["id"]]
     r = store.get(running["id"])
     assert (r["status"], r["reason"]) == ("paused", "restart")
     assert store.get(done["id"])["status"] == "done"
+
+
+def test_new_job_is_uploading_and_recover_drops_unfinished_uploads(store):
+    job = store.create("a.mp3", "lecture")
+    assert job["status"] == "uploading"
+    assert store.recover_interrupted() == []
+    with pytest.raises(KeyError):
+        store.get(job["id"])
+
+
+def test_transition_only_from_allowed_status(store):
+    job = store.create("a.mp3", "lecture")
+    store.update(job["id"], status="paused")
+    assert store.transition(job["id"], ("paused", "error"), status="queued")["status"] == "queued"
+    assert store.transition(job["id"], ("paused", "error"), status="queued") is None
+
+
+def test_worker_survives_crashing_run():
+    import time
+
+    from voice_to_doc.jobs import Worker
+
+    done = []
+
+    class Flaky:
+        def run(self, job_id):
+            if job_id == "bad":
+                raise RuntimeError("disk gone")
+            done.append(job_id)
+
+    worker = Worker(Flaky())
+    worker.start()
+    worker.submit("bad")
+    worker.submit("good")
+    deadline = time.monotonic() + 5
+    while not done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert done == ["good"]
+
+
+def test_rate_limit_wait_is_shown_in_job_message(store, tmp_path, clock):
+    class MinuteOnce(FakeGroq):
+        hit = False
+
+        def transcribe(self, path, language):
+            if not self.hit:
+                self.hit = True
+                raise RateLimited("tokens per minute (TPM)", retry_after=5, daily=False)
+            return super().transcribe(path, language)
+
+    job = add_job(store, tmp_path)
+    seen = []
+
+    def sleep(seconds):
+        seen.append(store.get(job["id"])["message"])
+        clock.sleep(seconds)
+
+    fake = MinuteOnce()
+    p = Pipeline(store, lambda: Settings(groq_api_key="k", chunk_seconds=3), lambda _s: fake, sleep=sleep, clock=clock)
+    p.run(job["id"])
+    assert any(m.startswith("Лимит Groq") for m in seen)
+    assert store.get(job["id"])["message"] == ""

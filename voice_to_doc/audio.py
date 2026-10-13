@@ -4,7 +4,7 @@ import csv
 import io
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404 — fixed ffmpeg argv, no shell
 from pathlib import Path
 
 import imageio_ffmpeg
@@ -37,7 +37,8 @@ def prepare_audio(src: Path, job_dir: Path, chunk_seconds: int) -> dict:
         "-segment_list", str(list_path), "-segment_list_type", "csv",
         "-reset_timestamps", "1", str(chunks_dir / "%03d.ogg"),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # nosec: argv list without a shell; paths are ours (source<.ext>), never the user's filename.
+    proc = subprocess.run(cmd, capture_output=True, text=True)  # nosec B603
     chunks = parse_segment_list(list_path.read_text()) if list_path.exists() else []
     if proc.returncode != 0 or not chunks:
         raise AudioError(READ_ERROR, proc.stderr.strip())

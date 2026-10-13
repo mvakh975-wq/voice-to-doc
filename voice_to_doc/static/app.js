@@ -11,6 +11,7 @@ const STATUS = { queued: "В очереди", running: "В работе", done: 
 const KIND = { lecture: "Лекция", interview: "Интервью" };
 
 let timer = null;
+let generation = 0; // bumped on every navigation; stale async views bail out
 let selectedFile = null;
 let currentJob = null;
 let renderedFor = null;
@@ -50,23 +51,27 @@ function showError(id, message) {
 
 function route() {
   clearTimeout(timer);
+  const gen = ++generation;
   const match = location.hash.match(/^#\/job\/([\w-]+)$/);
-  if (match) showJob(match[1]);
-  else showHome();
+  if (match) showJob(match[1], gen);
+  else showHome(gen);
 }
 
 /* ---------- home ---------- */
 
-async function showHome() {
+async function showHome(gen = generation) {
   $("job").hidden = true;
   $("home").hidden = false;
   const { has_key } = await api("/api/settings");
+  const jobs = await api("/api/jobs");
+  if (gen !== generation) return;
   $("setup").hidden = has_key;
   $("upload-form").hidden = !has_key;
-  const jobs = await api("/api/jobs");
   $("jobs-empty").hidden = jobs.length > 0;
   $("jobs").replaceChildren(...jobs.map(jobRow));
-  if (jobs.some((j) => j.status === "queued" || j.status === "running")) timer = setTimeout(showHome, 3000);
+  if (jobs.some((j) => j.status === "queued" || j.status === "running")) {
+    timer = setTimeout(() => showHome(gen), 3000);
+  }
 }
 
 function jobRow(job) {
@@ -124,7 +129,7 @@ function bindHome() {
     }
   });
 
-  bindKeyForm("key-form", "key-input", "key-error", showHome);
+  bindKeyForm("key-form", "key-input", "key-error", () => showHome(++generation));
 }
 
 function bindKeyForm(formId, inputId, errorId, after) {
@@ -143,16 +148,17 @@ function bindKeyForm(formId, inputId, errorId, after) {
 
 /* ---------- job ---------- */
 
-async function showJob(id) {
+async function showJob(id, gen = generation) {
   $("home").hidden = true;
   $("job").hidden = false;
   let job;
   try {
     job = await api(`/api/jobs/${id}`);
   } catch {
-    location.hash = "#/";
+    if (gen === generation) location.hash = "#/";
     return;
   }
+  if (gen !== generation) return;
   currentJob = job;
   $("job-name").textContent = job.filename;
   $("job-meta").textContent = `${KIND[job.kind]} · ${fmtDuration(job.duration_s)} · ${STATUS[job.status]}`;
@@ -174,7 +180,9 @@ async function showJob(id) {
   if (done && renderedFor !== job.id) await renderResult(job);
   if (!done) renderedFor = null;
 
-  if (job.status === "queued" || job.status === "running") timer = setTimeout(() => showJob(id), 2000);
+  if (gen === generation && (job.status === "queued" || job.status === "running")) {
+    timer = setTimeout(() => showJob(id, gen), 2000);
+  }
 }
 
 function renderSteps(job) {
@@ -210,6 +218,16 @@ async function renderResult(job) {
     // The text comes from speech recognition and an LLM: never let it inject HTML.
     const escaped = md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     doc.innerHTML = marked.parse(escaped);
+    // Only plain web links survive: no javascript:/data: URLs, no remote images.
+    doc.querySelectorAll("a").forEach((a) => {
+      if (/^https?:\/\//i.test(a.getAttribute("href") || "")) {
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      } else {
+        a.removeAttribute("href");
+      }
+    });
+    doc.querySelectorAll("img").forEach((img) => img.remove());
   } else {
     doc.replaceChildren(el("pre", "plain", md));
   }
@@ -227,7 +245,7 @@ async function act(path, data) {
     showError("job-key-error", err.message);
   }
   renderedFor = null;
-  showJob(currentJob.id);
+  showJob(currentJob.id, ++generation);
 }
 
 function bindJob() {
