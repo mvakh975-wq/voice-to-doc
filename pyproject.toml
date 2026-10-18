@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls the real Groq API (needs GROQ_API_KEY in .env)"]
+addopts = "-m 'not live'"

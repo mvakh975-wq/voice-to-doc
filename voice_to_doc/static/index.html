@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Расшифровка записей</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/vendor/marked-12.0.2.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<main class="page">
+  <section id="home" hidden>
+    <h1>Расшифровка записей</h1>
+
+    <div id="setup" class="panel" hidden>
+      <h2>Нужен ключ Groq</h2>
+      <ol class="steps-help">
+        <li>Зарегистрируйтесь на <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> — это бесплатно.</li>
+        <li>Откройте раздел «API Keys» и создайте ключ.</li>
+        <li>Вставьте ключ сюда — он сохранится только на этом компьютере.</li>
+      </ol>
+      <form id="key-form" class="row">
+        <input id="key-input" type="password" placeholder="gsk_…" autocomplete="off" required>
+        <button type="submit">Сохранить</button>
+      </form>
+      <p id="key-error" class="error" hidden></p>
+    </div>
+
+    <form id="upload-form" hidden>
+      <label id="drop" class="drop">
+        <span id="drop-text" class="drop-text">Перетащите файл сюда или <u>выберите</u></span>
+        <span class="muted">mp3, m4a, ogg, wav, mp4 и другие аудио и видео</span>
+        <input id="file-input" type="file" accept="audio/*,video/*" class="visually-hidden">
+      </label>
+      <div class="row between">
+        <fieldset class="kind">
+          <legend>Тип записи</legend>
+          <label><input type="radio" name="kind" value="lecture" checked> Лекция</label>
+          <label><input type="radio" name="kind" value="interview"> Интервью</label>
+        </fieldset>
+        <button id="upload-btn" type="submit" disabled>Расшифровать</button>
+      </div>
+      <p id="upload-error" class="error" hidden></p>
+    </form>
+
+    <h2 class="list-title">Недавние</h2>
+    <ul id="jobs" class="jobs"></ul>
+    <p id="jobs-empty" class="muted">Пока ничего не загружено.</p>
+  </section>
+
+  <section id="job" hidden>
+    <a href="#/" class="back">← Назад</a>
+    <header class="job-head">
+      <h1 id="job-name"></h1>
+      <p id="job-meta" class="muted"></p>
+    </header>
+
+    <div id="progress">
+      <ol id="steps" class="steps"></ol>
+      <div id="bar" class="bar" role="progressbar" aria-label="Общий прогресс" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="bar-fill"></div></div>
+    </div>
+
+    <div id="job-alert" class="alert" hidden>
+      <p id="job-message"></p>
+      <form id="job-key-form" class="row" hidden>
+        <input id="job-key-input" type="password" placeholder="Новый ключ gsk_…" autocomplete="off" required>
+        <button type="submit">Сохранить и продолжить</button>
+      </form>
+      <p id="job-key-error" class="error" hidden></p>
+      <button id="resume-btn" type="button">Продолжить</button>
+    </div>
+
+    <div id="result" hidden>
+      <div class="actions">
+        <a id="dl-docx" class="button" download>Скачать .docx</a>
+        <a id="dl-md" class="button secondary" download>Скачать .md</a>
+        <button id="copy-btn" type="button" class="secondary">Копировать</button>
+        <span class="spacer"></span>
+        <select id="re-kind" aria-label="Тип записи">
+          <option value="lecture">Лекция</option>
+          <option value="interview">Интервью</option>
+        </select>
+        <button id="re-btn" type="button" class="secondary">Переоформить</button>
+      </div>
+      <article id="doc" class="doc"></article>
+    </div>
+
+    <div class="danger-zone">
+      <button id="delete-btn" type="button" class="link-danger" hidden>Удалить запись и все её файлы</button>
+      <p id="delete-error" class="error" hidden></p>
+    </div>
+  </section>
+</main>
+</body>
+</html>
